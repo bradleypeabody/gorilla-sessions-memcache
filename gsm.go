@@ -3,10 +3,15 @@
 package gsm
 
 import (
+	"bytes"
 	"encoding/base32"
+	"encoding/gob"
+	"encoding/json"
+	"fmt"
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/gorilla/securecookie"
 	"github.com/gorilla/sessions"
+	"log"
 	"net/http"
 	"strings"
 )
@@ -26,18 +31,30 @@ func NewMemcacheStore(client *memcache.Client, keyPrefix string, keyPairs ...[]b
 			Path:   "/",
 			MaxAge: 86400 * 30,
 		},
-		KeyPrefix: keyPrefix,
-		Client:    client,
+		KeyPrefix:   keyPrefix,
+		Client:      client,
+		StoreMethod: StoreMethodSecureCookie,
 	}
 }
+
+type StoreMethod string
+
+// take your pick on how to store the values in memcache
+const (
+	StoreMethodSecureCookie = StoreMethod("securecookie") // security
+	StoreMethodGob          = StoreMethod("gob")          // speed
+	StoreMethodJson         = StoreMethod("json")         // simplicity; warning: only string keys allowed and rest of data must be JSON.Marshal compatible
+)
 
 // MemcacheStore stores sessions in memcache
 //
 type MemcacheStore struct {
-	Codecs    []securecookie.Codec
-	Options   *sessions.Options // default configuration
-	Client    *memcache.Client
-	KeyPrefix string
+	Codecs      []securecookie.Codec
+	Options     *sessions.Options // default configuration
+	Client      *memcache.Client
+	KeyPrefix   string
+	Logging     int // set to > 0 to enable logging (using log.Printf)
+	StoreMethod StoreMethod
 }
 
 // MaxLength restricts the maximum length of new sessions to l.
@@ -103,19 +120,90 @@ func (s *MemcacheStore) Save(r *http.Request, w http.ResponseWriter,
 
 // save writes encoded session.Values using the memcache client
 func (s *MemcacheStore) save(session *sessions.Session) error {
-	encoded, err := securecookie.EncodeMulti(session.Name(), session.Values,
-		s.Codecs...)
-	if err != nil {
-		return err
-	}
 
 	key := s.KeyPrefix + session.ID
 
-	err = s.Client.Set(&memcache.Item{Key: key, Value: []byte(encoded)})
-	if err != nil {
-		return err
+	switch s.StoreMethod {
+
+	case StoreMethodSecureCookie:
+
+		encoded, err := securecookie.EncodeMulti(session.Name(), session.Values,
+			s.Codecs...)
+		if err != nil {
+			if s.Logging > 0 {
+				log.Printf("gorilla-sessions-memcache: set (method: securecookie, encoding error: %v)", err)
+			}
+			return err
+		}
+
+		err = s.Client.Set(&memcache.Item{Key: key, Value: []byte(encoded)})
+		if s.Logging > 0 {
+			log.Printf("gorilla-sessions-memcache: set (method: securecookie, session name: %v, memcache key: %v, memcache value: %v, error: %v)", session.Name(), key, encoded, err)
+		}
+		if err != nil {
+			return err
+		}
+
+		return nil
+
+	case StoreMethodGob:
+
+		buf := &bytes.Buffer{}
+		enc := gob.NewEncoder(buf)
+		if err := enc.Encode(session.Values); err != nil {
+			if s.Logging > 0 {
+				log.Printf("gorilla-sessions-memcache: set (method: gob, encoding error: %v)", err)
+			}
+			return err
+		}
+		bufbytes := buf.Bytes()
+
+		err := s.Client.Set(&memcache.Item{Key: key, Value: bufbytes})
+		if s.Logging > 0 {
+			log.Printf("gorilla-sessions-memcache: set (method: gob, session name: %v, memcache key: %v, memcache value len: %v, error: %v)", session.Name(), key, len(bufbytes), err)
+		}
+		if err != nil {
+			return err
+		}
+
+		return nil
+
+	case StoreMethodJson:
+
+		vals := make(map[string]interface{}, len(session.Values))
+		for k, v := range session.Values {
+			ks, ok := k.(string)
+			if !ok {
+				err := fmt.Errorf("Non-string key value, cannot jsonize: %v", k)
+				log.Printf("gorilla-sessions-memcache: set (method: json, encoding error: %v)", err)
+				return err
+			}
+			vals[ks] = v
+		}
+
+		bufbytes, err := json.Marshal(vals)
+		if err != nil {
+			if s.Logging > 0 {
+				log.Printf("gorilla-sessions-memcache: set (method: json, encoding error: %v)", err)
+			}
+			return err
+		}
+
+		err = s.Client.Set(&memcache.Item{Key: key, Value: bufbytes})
+		if s.Logging > 0 {
+			log.Printf("gorilla-sessions-memcache: set (method: json, session name: %v, memcache key: %v, memcache value: %v, error: %v)", session.Name(), key, string(bufbytes), err)
+		}
+		if err != nil {
+			return err
+		}
+
+		return nil
+
+	default:
+		panic("Unknown StoreMethod: " + string(s.StoreMethod))
 	}
 
+	panic("Unreachable")
 	return nil
 }
 
@@ -125,10 +213,66 @@ func (s *MemcacheStore) load(session *sessions.Session) error {
 	key := s.KeyPrefix + session.ID
 
 	it, err := s.Client.Get(key)
-
-	if err = securecookie.DecodeMulti(session.Name(), string(it.Value),
-		&session.Values, s.Codecs...); err != nil {
+	if s.Logging > 0 {
+		if s.StoreMethod == StoreMethodJson {
+			log.Printf("gorilla-sessions-memcache: get (method: %s, session name: %v, memcache key: %v, memcache value: %v, error: %v)", s.StoreMethod, session.Name(), key, string(it.Value), err)
+		} else {
+			log.Printf("gorilla-sessions-memcache: get (method: %s, session name: %v, memcache key: %v, memcache value len: %v, error: %v)", s.StoreMethod, session.Name(), key, len(it.Value), err)
+		}
+	}
+	if err != nil {
 		return err
 	}
+
+	switch s.StoreMethod {
+
+	case StoreMethodSecureCookie:
+
+		if err = securecookie.DecodeMulti(session.Name(), string(it.Value),
+			&session.Values, s.Codecs...); err != nil {
+			if s.Logging > 0 {
+				log.Printf("gorilla-sessions-memcache: get (method: securecookie, decoding error: %v)", err)
+			}
+			return err
+		}
+		return nil
+
+	case StoreMethodGob:
+
+		buf := bytes.NewBuffer(it.Value)
+		dec := gob.NewDecoder(buf)
+
+		err = dec.Decode(&session.Values)
+		if err != nil {
+			if s.Logging > 0 {
+				log.Printf("gorilla-sessions-memcache: get (method: gob, decoding error: %v)", err)
+			}
+		}
+		return err
+
+	case StoreMethodJson:
+
+		vals := make(map[string]interface{})
+
+		err := json.Unmarshal(it.Value, &vals)
+		if err != nil {
+			if s.Logging > 0 {
+				log.Printf("gorilla-sessions-memcache: get (method: json, decoding error: %v)", err)
+			}
+			return err
+		}
+
+		for k, v := range vals {
+			session.Values[k] = v
+		}
+
+		return nil
+
+	default:
+		panic("Unknown StoreMethod: " + string(s.StoreMethod))
+
+	}
+
+	panic("Unreachable")
 	return nil
 }

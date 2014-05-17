@@ -38,6 +38,42 @@ Usage
       session.Save(r, w)
     }
 
+Storage Methods
+---------------
+
+I've added a few different methods of storage of the session data in memcache.  You
+use them by setting the StoreMethod field.
+
+* SecureCookie - uses the default securecookie encoding.  Values are more secure
+  as they are not readable from memcache without the secret key.
+* Gob - uses the Gob encoder directly without any post processing.  Faster.
+  Result is Gob's usual binary gibber (not human readable)
+* Json - uses the Json Marshaller.  Result is human readable, slower but still
+  pretty fast.  Be careful - it will munch your data into stuff that works
+  with JSON, and the keys must be strings.  Example: you put in an int64 value
+  and you'll get back a float64. 
+
+Example:
+
+    store := gsm.NewMemcacheStore(memcacheClient, "session_prefix_", []byte("..."))
+    // do one of these:
+    store.StoreMethod = gsm.StoreMethodSecureCookie // default, more secure
+    store.StoreMethod = gsm.StoreMethodGob // faster
+    store.StoreMethod = gsm.StoreMethodJson // human readable
+    							// (but watch out, it munches your types
+    							// to JSON compatible stuff)
+
+Logging
+-------
+
+Logging is available by setting the Logging field to > 0 after making your MemcacheStore.
+
+    store := gsm.NewMemcacheStore(memcacheClient, "session_prefix_", []byte("..."))
+    store.Logging = 1
+
+That will output (using log.Printf) data about each session read/written from/to memcache.
+Useful for debugging
+
 Things to Know
 --------------
 
