@@ -38,6 +38,27 @@ Usage
       session.Save(r, w)
     }
 
+
+    ......
+    // you can also setup a MemCacheStore, which does not rely on the browser accepting cookies.
+    // this means, your client has to extract and send a configurable http Headerfield manually.
+    // e.g.
+
+    // set up your memcache client
+    memcacheClient := memcache.New("localhost:11211")
+    
+    // set up your session store relying on a http Headerfield: `X-CUSTOM-HEADER`
+    store := gsm.NewMemcacheStoreWithValueStorer(memcacheClient, &gsm.HeaderStorer{HeaderPrefix:"X-CUSTOM-HEADER"}, "session_prefix_", []byte("secret-key-goes-here"))
+    
+    // and the rest of it is the same as any other gorilla session handling:
+    // The client has to send the session information in the header-field: `X-CUSTOM-HEADER`
+    func MyHandler(w http.ResponseWriter, r *http.Request) {
+      session, _ := store.Get(r, "session-name")
+      session.Values["foo"] = "bar"
+      session.Values[42] = 43
+      session.Save(r, w)
+    }
+
 Storage Methods
 ---------------
 

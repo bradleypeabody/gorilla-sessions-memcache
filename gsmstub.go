@@ -8,12 +8,18 @@ import (
 	"strings"
 )
 
-// Sessions implemented with a dumb in-memory
-// map and no expiration.  Good for local
+// NewDumbMemorySessionStoreWithValueStorer return a new dumb in-memory
+// map and no expiration backed by a ValueStorer.  Good for local
 // development so you don't have to run
 // memcached on your laptop just to fire up
 // your app and hack away.
-func NewDumbMemorySessionStore() *DumbMemoryStore {
+// A ValueStorer is used to store an encrypted sessionID. The encrypted sessionID is used to access
+// the dumb in-memory map and get the session values.
+func NewDumbMemorySessionStoreWithValueStorer(valueStorer ValueStorer) *DumbMemoryStore {
+
+	if valueStorer == nil {
+		panic("Cannot have nil ValueStorer")
+	}
 
 	keyPair := []byte("stub")
 
@@ -23,16 +29,27 @@ func NewDumbMemorySessionStore() *DumbMemoryStore {
 			Path:   "/",
 			MaxAge: 86400 * 30,
 		},
-		Data: make(map[string]string),
+		Data:        make(map[string]string),
+		ValueStorer: valueStorer,
 	}
+}
+
+// Sessions implemented with a dumb in-memory
+// map and no expiration.  Good for local
+// development so you don't have to run
+// memcached on your laptop just to fire up
+// your app and hack away.
+func NewDumbMemorySessionStore() *DumbMemoryStore {
+	return NewDumbMemorySessionStoreWithValueStorer(&CookieStorer{})
 }
 
 // DumbMemoryStore stores sessions in memcache
 //
 type DumbMemoryStore struct {
-	Codecs  []securecookie.Codec
-	Options *sessions.Options // default configuration
-	Data    map[string]string // session data goes here
+	Codecs      []securecookie.Codec
+	Options     *sessions.Options // default configuration
+	Data        map[string]string // session data goes here
+	ValueStorer ValueStorer
 }
 
 // MaxLength restricts the maximum length of new sessions to l.
@@ -62,8 +79,8 @@ func (s *DumbMemoryStore) New(r *http.Request, name string) (*sessions.Session, 
 	session.Options = &opts
 	session.IsNew = true
 	var err error
-	if c, errCookie := r.Cookie(name); errCookie == nil {
-		err = securecookie.DecodeMulti(name, c.Value, &session.ID, s.Codecs...)
+	if value, errCookie := s.ValueStorer.GetValueForSessionName(r, name); errCookie == nil {
+		err = securecookie.DecodeMulti(name, value, &session.ID, s.Codecs...)
 		if err == nil {
 			err = s.load(session)
 			if err == nil {
@@ -92,7 +109,9 @@ func (s *DumbMemoryStore) Save(r *http.Request, w http.ResponseWriter,
 	if err != nil {
 		return err
 	}
-	http.SetCookie(w, sessions.NewCookie(session.Name(), encoded, session.Options))
+	if err := s.ValueStorer.SetValueForSessionName(w, session.Name(), encoded, session.Options); err != nil {
+		return err
+	}
 	return nil
 }
 
