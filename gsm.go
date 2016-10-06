@@ -136,7 +136,7 @@ func (s *MemcacheStore) save(session *sessions.Session) error {
 			return err
 		}
 
-		err = s.Client.Set(&memcache.Item{Key: key, Value: []byte(encoded)})
+		err = s.Client.Set(&memcache.Item{Key: key, Value: []byte(encoded), Expiration: session.Options.MaxAge})
 		if s.Logging > 0 {
 			log.Printf("gorilla-sessions-memcache: set (method: securecookie, session name: %v, memcache key: %v, memcache value: %v, error: %v)", session.Name(), key, encoded, err)
 		}
@@ -158,7 +158,7 @@ func (s *MemcacheStore) save(session *sessions.Session) error {
 		}
 		bufbytes := buf.Bytes()
 
-		err := s.Client.Set(&memcache.Item{Key: key, Value: bufbytes})
+		err := s.Client.Set(&memcache.Item{Key: key, Value: bufbytes, Expiration: session.Options.MaxAge})
 		if s.Logging > 0 {
 			log.Printf("gorilla-sessions-memcache: set (method: gob, session name: %v, memcache key: %v, memcache value len: %v, error: %v)", session.Name(), key, len(bufbytes), err)
 		}
@@ -189,7 +189,7 @@ func (s *MemcacheStore) save(session *sessions.Session) error {
 			return err
 		}
 
-		err = s.Client.Set(&memcache.Item{Key: key, Value: bufbytes})
+		err = s.Client.Set(&memcache.Item{Key: key, Value: bufbytes, Expiration: session.Options.MaxAge})
 		if s.Logging > 0 {
 			log.Printf("gorilla-sessions-memcache: set (method: json, session name: %v, memcache key: %v, memcache value: %v, error: %v)", session.Name(), key, string(bufbytes), err)
 		}
