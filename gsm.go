@@ -16,13 +16,19 @@ import (
 	"strings"
 )
 
-// NewMemcacheStore returns a new MemcacheStore.
+// NewMemcacheStoreWithValueStorer returns a new MemcacheStore backed by a ValueStorer.
 // You need to provide the memcache client and
-// an optional prefix for the keys we store
-func NewMemcacheStore(client *memcache.Client, keyPrefix string, keyPairs ...[]byte) *MemcacheStore {
+// an optional prefix for the keys we store.
+// A ValueStorer is used to store an encrypted sessionID. The encrypted sessionID is used to access
+// memcache and get the session values.
+func NewMemcacheStoreWithValueStorer(client *memcache.Client, valueStorer ValueStorer, keyPrefix string, keyPairs ...[]byte) *MemcacheStore {
 
 	if client == nil {
 		panic("Cannot have nil memcache client")
+	}
+
+	if valueStorer == nil {
+		panic("Cannot have nil ValueStorer")
 	}
 
 	return &MemcacheStore{
@@ -34,7 +40,15 @@ func NewMemcacheStore(client *memcache.Client, keyPrefix string, keyPairs ...[]b
 		KeyPrefix:   keyPrefix,
 		Client:      client,
 		StoreMethod: StoreMethodSecureCookie,
+		ValueStorer: valueStorer,
 	}
+}
+
+// NewMemcacheStore returns a new MemcacheStore.
+// You need to provide the memcache client and
+// an optional prefix for the keys we store
+func NewMemcacheStore(client *memcache.Client, keyPrefix string, keyPairs ...[]byte) *MemcacheStore {
+	return NewMemcacheStoreWithValueStorer(client, &CookieStorer{}, keyPrefix, keyPairs...)
 }
 
 type StoreMethod string
@@ -55,6 +69,7 @@ type MemcacheStore struct {
 	KeyPrefix   string
 	Logging     int // set to > 0 to enable logging (using log.Printf)
 	StoreMethod StoreMethod
+	ValueStorer ValueStorer
 }
 
 // MaxLength restricts the maximum length of new sessions to l.
@@ -84,8 +99,8 @@ func (s *MemcacheStore) New(r *http.Request, name string) (*sessions.Session, er
 	session.Options = &opts
 	session.IsNew = true
 	var err error
-	if c, errCookie := r.Cookie(name); errCookie == nil {
-		err = securecookie.DecodeMulti(name, c.Value, &session.ID, s.Codecs...)
+	if value, errCookie := s.ValueStorer.GetValueForSessionName(r, name); errCookie == nil {
+		err = securecookie.DecodeMulti(name, value, &session.ID, s.Codecs...)
 		if err == nil {
 			err = s.load(session)
 			if err == nil {
@@ -114,7 +129,9 @@ func (s *MemcacheStore) Save(r *http.Request, w http.ResponseWriter,
 	if err != nil {
 		return err
 	}
-	http.SetCookie(w, sessions.NewCookie(session.Name(), encoded, session.Options))
+	if err := s.ValueStorer.SetValueForSessionName(w, session.Name(), encoded, session.Options); err != nil {
+		return err
+	}
 	return nil
 }
 
