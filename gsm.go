@@ -105,6 +105,11 @@ func (s *MemcacheStore) New(r *http.Request, name string) (*sessions.Session, er
 			err = s.load(session)
 			if err == nil {
 				session.IsNew = false
+			} else {
+				if err == memcache.ErrCacheMiss {
+					// If the session wasn't found in memcache, create a new one
+					err = s.save(session)
+				}
 			}
 		}
 	}
