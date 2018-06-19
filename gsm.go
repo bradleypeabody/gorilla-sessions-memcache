@@ -11,13 +11,14 @@ import (
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/gorilla/securecookie"
 	"github.com/gorilla/sessions"
+	"github.com/memcachier/mc"
 	"log"
 	"net/http"
 	"strings"
 )
 
 // NewMemcacheStoreWithValueStorer returns a new MemcacheStore backed by a ValueStorer.
-// You need to provide the memcache client and
+// You need to provide the memcache client (github.com/bradfitz/gomemcache/memcache) and
 // an optional prefix for the keys we store.
 // A ValueStorer is used to store an encrypted sessionID. The encrypted sessionID is used to access
 // memcache and get the session values.
@@ -45,10 +46,47 @@ func NewMemcacheStoreWithValueStorer(client *memcache.Client, valueStorer ValueS
 }
 
 // NewMemcacheStore returns a new MemcacheStore.
-// You need to provide the memcache client and
+// You need to provide the memcache client
+// (github.com/bradfitz/gomemcache/memcache) and
 // an optional prefix for the keys we store
 func NewMemcacheStore(client *memcache.Client, keyPrefix string, keyPairs ...[]byte) *MemcacheStore {
 	return NewMemcacheStoreWithValueStorer(client, &CookieStorer{}, keyPrefix, keyPairs...)
+}
+
+// NewBinaryMemcacheStoreWithValueStorer returns a new MemcacheStore backed by a ValueStorer.
+// You need to provide the binary memcache client (github.com/memcachier/mc) and
+// an optional prefix for the keys we store.
+// A ValueStorer is used to store an encrypted sessionID. The encrypted sessionID is used to access
+// memcache and get the session values.
+func NewBinaryMemcacheStoreWithValueStorer(client *mc.Client, valueStorer ValueStorer, keyPrefix string, keyPairs ...[]byte) *MemcacheStore {
+
+	if client == nil {
+		panic("Cannot have nil memcache client")
+	}
+
+	if valueStorer == nil {
+		panic("Cannot have nil ValueStorer")
+	}
+
+	return &MemcacheStore{
+		Codecs: securecookie.CodecsFromPairs(keyPairs...),
+		Options: &sessions.Options{
+			Path:   "/",
+			MaxAge: 86400 * 30,
+		},
+		KeyPrefix:    keyPrefix,
+		BinaryClient: client,
+		StoreMethod:  StoreMethodSecureCookie,
+		ValueStorer:  valueStorer,
+	}
+}
+
+// NewBinarMemcacheStore returns a new MemcacheStore.
+// You need to provide the binary memcache client
+// (github.com/memcachier/mc) and
+// an optional prefix for the keys we store
+func NewBinaryMemcacheStore(client *mc.Client, keyPrefix string, keyPairs ...[]byte) *MemcacheStore {
+	return NewBinaryMemcacheStoreWithValueStorer(client, &CookieStorer{}, keyPrefix, keyPairs...)
 }
 
 type StoreMethod string
@@ -63,13 +101,14 @@ const (
 // MemcacheStore stores sessions in memcache
 //
 type MemcacheStore struct {
-	Codecs      []securecookie.Codec
-	Options     *sessions.Options // default configuration
-	Client      *memcache.Client
-	KeyPrefix   string
-	Logging     int // set to > 0 to enable logging (using log.Printf)
-	StoreMethod StoreMethod
-	ValueStorer ValueStorer
+	Codecs       []securecookie.Codec
+	Options      *sessions.Options // default configuration
+	Client       *memcache.Client
+	BinaryClient *mc.Client
+	KeyPrefix    string
+	Logging      int // set to > 0 to enable logging (using log.Printf)
+	StoreMethod  StoreMethod
+	ValueStorer  ValueStorer
 }
 
 // MaxLength restricts the maximum length of new sessions to l.
@@ -153,7 +192,11 @@ func (s *MemcacheStore) save(session *sessions.Session) error {
 			return err
 		}
 
-		err = s.Client.Set(&memcache.Item{Key: key, Value: []byte(encoded), Expiration: int32(session.Options.MaxAge)})
+		if s.Client != nil {
+			err = s.Client.Set(&memcache.Item{Key: key, Value: []byte(encoded), Expiration: int32(session.Options.MaxAge)})
+		} else {
+			_, err = s.BinaryClient.Set(key, encoded, 0, uint32(session.Options.MaxAge), 0)
+		}
 		if s.Logging > 0 {
 			log.Printf("gorilla-sessions-memcache: set (method: securecookie, session name: %v, memcache key: %v, memcache value: %v, error: %v)", session.Name(), key, encoded, err)
 		}
@@ -167,7 +210,8 @@ func (s *MemcacheStore) save(session *sessions.Session) error {
 
 		buf := &bytes.Buffer{}
 		enc := gob.NewEncoder(buf)
-		if err := enc.Encode(session.Values); err != nil {
+		err := enc.Encode(session.Values)
+		if err != nil {
 			if s.Logging > 0 {
 				log.Printf("gorilla-sessions-memcache: set (method: gob, encoding error: %v)", err)
 			}
@@ -175,7 +219,11 @@ func (s *MemcacheStore) save(session *sessions.Session) error {
 		}
 		bufbytes := buf.Bytes()
 
-		err := s.Client.Set(&memcache.Item{Key: key, Value: bufbytes, Expiration: int32(session.Options.MaxAge)})
+		if s.Client != nil {
+			err = s.Client.Set(&memcache.Item{Key: key, Value: bufbytes, Expiration: int32(session.Options.MaxAge)})
+		} else {
+			_, err = s.BinaryClient.Set(key, string(bufbytes), 0, uint32(session.Options.MaxAge), 0)
+		}
 		if s.Logging > 0 {
 			log.Printf("gorilla-sessions-memcache: set (method: gob, session name: %v, memcache key: %v, memcache value len: %v, error: %v)", session.Name(), key, len(bufbytes), err)
 		}
@@ -206,7 +254,11 @@ func (s *MemcacheStore) save(session *sessions.Session) error {
 			return err
 		}
 
-		err = s.Client.Set(&memcache.Item{Key: key, Value: bufbytes, Expiration: int32(session.Options.MaxAge)})
+		if s.Client != nil {
+			err = s.Client.Set(&memcache.Item{Key: key, Value: bufbytes, Expiration: int32(session.Options.MaxAge)})
+		} else {
+			_, err = s.BinaryClient.Set(key, string(bufbytes), 0, uint32(session.Options.MaxAge), 0)
+		}
 		if s.Logging > 0 {
 			log.Printf("gorilla-sessions-memcache: set (method: json, session name: %v, memcache key: %v, memcache value: %v, error: %v)", session.Name(), key, string(bufbytes), err)
 		}
@@ -229,12 +281,23 @@ func (s *MemcacheStore) load(session *sessions.Session) error {
 
 	key := s.KeyPrefix + session.ID
 
-	it, err := s.Client.Get(key)
+	var err error
+	var val string
+	var valBytes []byte
+	if s.Client != nil {
+		var it *memcache.Item
+		it, err = s.Client.Get(key)
+		valBytes = it.Value
+		val = string(valBytes)
+	} else {
+		val, _, _, err = s.BinaryClient.Get(key)
+		valBytes = []byte(val)
+	}
 	if s.Logging > 0 {
 		if s.StoreMethod == StoreMethodJson {
-			log.Printf("gorilla-sessions-memcache: get (method: %s, session name: %v, memcache key: %v, memcache value: %v, error: %v)", s.StoreMethod, session.Name(), key, string(it.Value), err)
+			log.Printf("gorilla-sessions-memcache: get (method: %s, session name: %v, memcache key: %v, memcache value: %v, error: %v)", s.StoreMethod, session.Name(), key, val, err)
 		} else {
-			log.Printf("gorilla-sessions-memcache: get (method: %s, session name: %v, memcache key: %v, memcache value len: %v, error: %v)", s.StoreMethod, session.Name(), key, len(it.Value), err)
+			log.Printf("gorilla-sessions-memcache: get (method: %s, session name: %v, memcache key: %v, memcache value len: %v, error: %v)", s.StoreMethod, session.Name(), key, len(valBytes), err)
 		}
 	}
 	if err != nil {
@@ -245,7 +308,7 @@ func (s *MemcacheStore) load(session *sessions.Session) error {
 
 	case StoreMethodSecureCookie:
 
-		if err = securecookie.DecodeMulti(session.Name(), string(it.Value),
+		if err = securecookie.DecodeMulti(session.Name(), val,
 			&session.Values, s.Codecs...); err != nil {
 			if s.Logging > 0 {
 				log.Printf("gorilla-sessions-memcache: get (method: securecookie, decoding error: %v)", err)
@@ -256,7 +319,7 @@ func (s *MemcacheStore) load(session *sessions.Session) error {
 
 	case StoreMethodGob:
 
-		buf := bytes.NewBuffer(it.Value)
+		buf := bytes.NewBuffer(valBytes)
 		dec := gob.NewDecoder(buf)
 
 		err = dec.Decode(&session.Values)
@@ -271,7 +334,7 @@ func (s *MemcacheStore) load(session *sessions.Session) error {
 
 		vals := make(map[string]interface{})
 
-		err := json.Unmarshal(it.Value, &vals)
+		err := json.Unmarshal(valBytes, &vals)
 		if err != nil {
 			if s.Logging > 0 {
 				log.Printf("gorilla-sessions-memcache: get (method: json, decoding error: %v)", err)
