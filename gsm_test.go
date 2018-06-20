@@ -18,7 +18,7 @@ func TestMainGomemcache(t *testing.T) {
 
 		memcacheClient := memcache.New("localhost:11211")
 		// fmt.Printf("memcacheClient = %v\n", memcacheClient)
-		sessionStore := NewGomemcacheStore(memcacheClient, "TestMain_", []byte("example123"))
+		sessionStore := NewMemcacheStore(memcacheClient, "TestMain_", []byte("example123"))
 		sessionStore.StoreMethod = StoreMethod(method)
 		sessionStore.Logging = 1
 
@@ -98,7 +98,7 @@ func TestMainMc(t *testing.T) {
 		memcacheClient := mc.NewMC("localhost:11211", "", "")
 		defer memcacheClient.Quit()
 		// fmt.Printf("memcacheClient = %v\n", memcacheClient)
-		sessionStore := NewMemcacheStore(memcacheClient, "TestMainBinray_", []byte("example123"))
+		sessionStore := NewMemcacherStore(memcacheClient, "TestMainBinray_", []byte("example123"))
 		sessionStore.StoreMethod = StoreMethod(method)
 		sessionStore.Logging = 1
 
@@ -181,7 +181,7 @@ func TestMainHeaderStorer(t *testing.T) {
 		headerStorer := &HeaderStorer{HeaderFieldName: headerName}
 		memcacheClient := memcache.New("localhost:11211")
 		// fmt.Printf("memcacheClient = %v\n", memcacheClient)
-		sessionStore := NewMemcacheStoreWithValueStorer(NewGoMemcacher(memcacheClient), headerStorer, "TestMain_", []byte("example123"))
+		sessionStore := NewMemcacheStoreWithValueStorer(memcacheClient, headerStorer, "TestMain_", []byte("example123"))
 		sessionStore.StoreMethod = StoreMethod(method)
 		sessionStore.Logging = 1
 

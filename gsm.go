@@ -22,7 +22,7 @@ import (
 // an optional prefix for the keys we store.
 // A ValueStorer is used to store an encrypted sessionID. The encrypted sessionID is used to access
 // memcache and get the session values.
-func NewMemcacheStoreWithValueStorer(client Memcacher, valueStorer ValueStorer, keyPrefix string, keyPairs ...[]byte) *MemcacheStore {
+func NewMemcacherStoreWithValueStorer(client Memcacher, valueStorer ValueStorer, keyPrefix string, keyPairs ...[]byte) *MemcacheStore {
 
 	if client == nil {
 		panic("Cannot have nil memcache client")
@@ -45,19 +45,29 @@ func NewMemcacheStoreWithValueStorer(client Memcacher, valueStorer ValueStorer, 
 	}
 }
 
-// NewMemcacheStore returns a new MemcacheStore.
+// NewMemcacherStore returns a new MemcacheStore.
 // You need to provide the memcache client that
 // implements the Memcacher interface and
 // an optional prefix for the keys we store
-func NewMemcacheStore(client Memcacher, keyPrefix string, keyPairs ...[]byte) *MemcacheStore {
-	return NewMemcacheStoreWithValueStorer(client, &CookieStorer{}, keyPrefix, keyPairs...)
+func NewMemcacherStore(client Memcacher, keyPrefix string, keyPairs ...[]byte) *MemcacheStore {
+	return NewMemcacherStoreWithValueStorer(client, &CookieStorer{}, keyPrefix, keyPairs...)
 }
 
-// NewGomemcacheStore returns a new MemcacheStore for the
+// NewMemcacheStoreWithValueStorer returns a new MemcacheStore backed by a ValueStorer.
+// You need to provide the gomemcache client
+// (github.com/bradfitz/gomemcache/memcache) and
+// an optional prefix for the keys we store.
+// A ValueStorer is used to store an encrypted sessionID. The encrypted sessionID is used to access
+// memcache and get the session values.
+func NewMemcacheStoreWithValueStorer(client *memcache.Client, valueStorer ValueStorer, keyPrefix string, keyPairs ...[]byte) *MemcacheStore {
+	return NewMemcacherStoreWithValueStorer(NewGoMemcacher(client), valueStorer, keyPrefix, keyPairs...)
+}
+
+// NewMemcacheStore returns a new MemcacheStore for the
 // gomemcache client (github.com/bradfitz/gomemcache/memcache).
 // You also need to provider an optional prefix for the keys we store.
-func NewGomemcacheStore(client *memcache.Client, keyPrefix string, keyPairs ...[]byte) *MemcacheStore {
-	return NewMemcacheStore(NewGoMemcacher(client), keyPrefix, keyPairs...)
+func NewMemcacheStore(client *memcache.Client, keyPrefix string, keyPairs ...[]byte) *MemcacheStore {
+	return NewMemcacherStore(NewGoMemcacher(client), keyPrefix, keyPairs...)
 }
 
 type StoreMethod string
