@@ -12,13 +12,13 @@ import (
 
 // FIXME: need unit tests for the different StoreMethods
 
-func TestMain(t *testing.T) {
+func TestMainGomemcache(t *testing.T) {
 
 	doRun := func(method StoreMethod, listenConfig string) {
 
 		memcacheClient := memcache.New("localhost:11211")
 		// fmt.Printf("memcacheClient = %v\n", memcacheClient)
-		sessionStore := NewMemcacheStore(memcacheClient, "TestMain_", []byte("example123"))
+		sessionStore := NewGomemcacheStore(memcacheClient, "TestMain_", []byte("example123"))
 		sessionStore.StoreMethod = StoreMethod(method)
 		sessionStore.Logging = 1
 
@@ -91,14 +91,14 @@ func TestMain(t *testing.T) {
 
 }
 
-func TestMainBinary(t *testing.T) {
+func TestMainMc(t *testing.T) {
 
 	doRun := func(method StoreMethod, listenConfig string) {
 
 		memcacheClient := mc.NewMC("localhost:11211", "", "")
 		defer memcacheClient.Quit()
 		// fmt.Printf("memcacheClient = %v\n", memcacheClient)
-		sessionStore := NewBinaryMemcacheStore(memcacheClient, "TestMainBinray_", []byte("example123"))
+		sessionStore := NewMemcacheStore(memcacheClient, "TestMainBinray_", []byte("example123"))
 		sessionStore.StoreMethod = StoreMethod(method)
 		sessionStore.Logging = 1
 
@@ -181,7 +181,7 @@ func TestMainHeaderStorer(t *testing.T) {
 		headerStorer := &HeaderStorer{HeaderFieldName: headerName}
 		memcacheClient := memcache.New("localhost:11211")
 		// fmt.Printf("memcacheClient = %v\n", memcacheClient)
-		sessionStore := NewMemcacheStoreWithValueStorer(memcacheClient, headerStorer, "TestMain_", []byte("example123"))
+		sessionStore := NewMemcacheStoreWithValueStorer(NewGoMemcacher(memcacheClient), headerStorer, "TestMain_", []byte("example123"))
 		sessionStore.StoreMethod = StoreMethod(method)
 		sessionStore.Logging = 1
 
