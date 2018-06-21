@@ -32,12 +32,12 @@ import (
 ...
 
 // set up your memcache client
-memcacheClient := memcache.New("localhost:11211")
+memcacheClient := gsm.NewGoMemcacher(memcache.New("localhost:11211"))
 // or
 memcacheClient := mc.NewMC("localhost:11211", "username", "password")
 
 // set up your session store
-store := gsm.NewMemcacheStore(memcacheClient, "session_prefix_", []byte("secret-key-goes-here"))
+store := gsm.NewMemcacherStore(memcacheClient, "session_prefix_", []byte("secret-key-goes-here"))
 
 // and the rest of it is the same as any other gorilla session handling:
 func MyHandler(w http.ResponseWriter, r *http.Request) {
@@ -54,12 +54,12 @@ func MyHandler(w http.ResponseWriter, r *http.Request) {
 // e.g.
 
 // set up your memcache client
-memcacheClient := memcache.New("localhost:11211")
+memcacheClient := gsm.NewGoMemcacher(memcache.New("localhost:11211"))
 // or
 memcacheClient := mc.NewMC("localhost:11211", "username", "password")
 
 // set up your session store relying on a http Headerfield: `X-CUSTOM-HEADER`
-store := gsm.NewMemcacheStoreWithValueStorer(memcacheClient, &gsm.HeaderStorer{HeaderPrefix:"X-CUSTOM-HEADER"}, "session_prefix_", []byte("secret-key-goes-here"))
+store := gsm.NewMemcacherStoreWithValueStorer(memcacheClient, &gsm.HeaderStorer{HeaderPrefix:"X-CUSTOM-HEADER"}, "session_prefix_", []byte("secret-key-goes-here"))
 
 // and the rest of it is the same as any other gorilla session handling:
 // The client has to send the session information in the header-field: `X-CUSTOM-HEADER`
@@ -89,7 +89,7 @@ use them by setting the StoreMethod field.
 Example:
 
 ```go
-store := gsm.NewMemcacheStore(memcacheClient, "session_prefix_", []byte("..."))
+store := gsm.NewMemcacherStore(memcacheClient, "session_prefix_", []byte("..."))
 // do one of these:
 store.StoreMethod = gsm.StoreMethodSecureCookie // default, more secure
 store.StoreMethod = gsm.StoreMethodGob // faster
@@ -104,7 +104,7 @@ Logging
 Logging is available by setting the Logging field to > 0 after making your MemcacheStore.
 
 ```go
-store := gsm.NewMemcacheStore(memcacheClient, "session_prefix_", []byte("..."))
+store := gsm.NewMemcacherStore(memcacheClient, "session_prefix_", []byte("..."))
 store.Logging = 1
 ```
 
