@@ -114,6 +114,6 @@ Useful for debugging
 Things to Know
 --------------
 
-* This is still experimental as of May 2014.
+* No official release has been done of this package but it should be stable for production use.
 
 * You can also call NewDumbMemorySessionStore() for local development without a memcache server (it's a stub that just stuffs your session data in a map - definitely do not use this for anything but local dev and testing).
