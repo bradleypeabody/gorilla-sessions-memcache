@@ -27,8 +27,11 @@ func NewGoMemcacher(c *memcache.Client) *GoMemcacher {
 }
 
 func (gm *GoMemcacher) Get(key string) (val string, flags uint32, cas uint64, err error) {
-	it, err := gm.client.Get(key)
-  return string(it.Value), it.Flags, 0, err
+	if it, err := gm.client.Get(key); err == nil{
+		return string(it.Value), it.Flags, 0, err
+	}else{
+		return "", 0, 0, err
+	}
 }
 
 
