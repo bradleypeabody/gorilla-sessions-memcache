@@ -59,7 +59,7 @@ memcacheClient := gsm.NewGoMemcacher(memcache.New("localhost:11211"))
 memcacheClient := mc.NewMC("localhost:11211", "username", "password")
 
 // set up your session store relying on a http Headerfield: `X-CUSTOM-HEADER`
-store := gsm.NewMemcacherStoreWithValueStorer(memcacheClient, &gsm.HeaderStorer{HeaderPrefix:"X-CUSTOM-HEADER"}, "session_prefix_", []byte("secret-key-goes-here"))
+store := gsm.NewMemcacherStoreWithValueStorer(memcacheClient, &gsm.HeaderStorer{HeaderFieldName:"X-CUSTOM-HEADER"}, "session_prefix_", []byte("secret-key-goes-here"))
 
 // and the rest of it is the same as any other gorilla session handling:
 // The client has to send the session information in the header-field: `X-CUSTOM-HEADER`
