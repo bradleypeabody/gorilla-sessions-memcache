@@ -16,7 +16,7 @@ For an ASCII memcache client:
 
 For a binary memcache client with SASL authentication:
 
-    go get github.com/memcachier/mc
+    go get github.com/memcachier/mc/v3
 
 Usage
 -----
@@ -25,7 +25,7 @@ Usage
 import (
   "github.com/bradfitz/gomemcache/memcache"
   // or
-  "github.com/memcachier/mc"
+  "github.com/memcachier/mc/v3"
   gsm "github.com/bradleypeabody/gorilla-sessions-memcache"
 )
 
